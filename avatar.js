@@ -80,14 +80,7 @@ function setupScene(gltf) {
     });
     scene.add(avatar);
 
-    // Create pedestal
-    const groundGeometry = new THREE.CylinderGeometry(0.6, 0.6, 0.1, 64);
-    const groundMaterial = new THREE.MeshStandardMaterial();
-    const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-    groundMesh.castShadow = false;
-    groundMesh.receiveShadow = true;
-    groundMesh.position.y -= 0.05;
-    scene.add(groundMesh);
+
 
     // Load animations
     const mixer = new THREE.AnimationMixer(avatar);
