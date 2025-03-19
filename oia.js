@@ -10,130 +10,161 @@ function loadModel() {
     (gltf) => {
       setupScene(gltf);
       document.getElementById('avatar-loading').style.display = 'none';
-    }, 
+    },
     (xhr) => {
       const percentCompletion = Math.round((xhr.loaded / xhr.total) * 100);
       document.getElementById('avatar-loading').innerText = `LOADING... ${percentCompletion}%`
       console.log(`Loading model... ${percentCompletion}%`);
-    }, 
+    },
     (error) => {
-      console.log(error);
+      console.error("An error happened", error);
     }
   );
 }
 
 function setupScene(gltf) {
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true, 
-      alpha: true 
-    });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    
-    const container = document.getElementById('avatar-container');
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true
+  });
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    container.appendChild(renderer.domElement);
+  const container = document.getElementById('avatar-container');
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
 
-    // Camera setup
-    const camera = new THREE.PerspectiveCamera(
-      45, container.clientWidth / container.clientHeight);
-    camera.position.set(0, 1, 100);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.enablePan = false;
-    controls.enableZoom = false;
-    controls.minDistance = 3;
-    controls.minPolarAngle = 1.4;
-    controls.maxPolarAngle = 1.4;
-    controls.target = new THREE.Vector3(0, 0.75, 0);
-    controls.update();
+  container.appendChild(renderer.domElement);
 
-    // Scene setup
-    const scene = new THREE.Scene();
+  // Camera setup
+  const camera = new THREE.PerspectiveCamera(
+    45, container.clientWidth / container.clientHeight);
+  camera.position.set(0, 1, 100);
 
-    // Lighting setup
-    scene.add(new THREE.AmbientLight());
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.minDistance = 3;
+  controls.minPolarAngle = 0;
+  controls.maxPolarAngle = Math.PI / 2;
+  controls.target = new THREE.Vector3(0, 0, 0);
+  controls.update();
 
-    const spotlight = new THREE.SpotLight(0xffffff, 5, 8, 1); // Reduced intensity from 20 to 5
-    spotlight.penumbra = 0.5;
-    spotlight.position.set(0, 4, 2);
-    spotlight.castShadow = true;
-    scene.add(spotlight);
+  // Scene setup
+  const scene = new THREE.Scene();
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1); // Reduced intensity from 2 to 1
-    keyLight.position.set(1, 1, 2);
-    keyLight.lookAt(new THREE.Vector3());
-    scene.add(keyLight);
+  // Lighting setup
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    // Load avatar
-    const avatar = gltf.scene;
-    avatar.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
+  const spotlight = new THREE.SpotLight(0xffffff, 1, 100, Math.PI / 4, 0.5, 1);
+  spotlight.position.set(0, 50, 50);
+  spotlight.castShadow = true;
+  scene.add(spotlight);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.5);
+  keyLight.position.set(1, 1, 2);
+  keyLight.lookAt(new THREE.Vector3());
+  scene.add(keyLight);
+
+  // Load avatar
+  const avatar = gltf.scene;
+  let targetMesh = null;
+  avatar.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      if (child.morphTargetInfluences && child.geometry.morphAttributes.position) {
+        targetMesh = child;
+        console.log("Found a mesh with morph targets:", targetMesh);
+        // Log all morph target names for debugging
+        console.log("Morph target names:", child.geometry.morphAttributes.position.map(attr => attr.name));
       }
-    });
-    avatar.rotation.y = Math.PI
-    avatar.position.x = -25;
-    avatar.position.y -= 10;
-    scene.add(avatar);
+    }
+  });
+  avatar.rotation.y = Math.PI;
+  avatar.position.x = -25;
+  avatar.position.y -= 10;
+  scene.add(avatar);
 
+  // Raycaster and mouse setup
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let isHovering = false;
 
+  container.addEventListener('mousemove', (event) => {
+    mouse.x = (event.offsetX / container.clientWidth) * 2 - 1;
+    mouse.y = -(event.offsetY / container.clientHeight) * 2 + 1;
+    checkIntersection(); // Call checkIntersection on mousemove
+  });
+  container.addEventListener('mouseleave', () => {
+    // Reset shape key when mouse leaves the container
+    if (isHovering) {
+      console.log("Mouse left the container");
+      isHovering = false;
+      setShapeKeyInfluence(targetMesh, "target_0", 0);
+    }
+  });
 
-    // Load animations
-    const mixer = new THREE.AnimationMixer(avatar);
-    const clips = gltf.animations;
-    const waveClip = THREE.AnimationClip.findByName(clips, 'Take 001_Muchkin1.002');
-    const stumbleClip = THREE.AnimationClip.findByName(clips, 'stagger');
-    const waveAction = mixer.clipAction(waveClip);
-    const stumbleAction = mixer.clipAction(stumbleClip);
+  function checkIntersection() {
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(avatar, true);
 
-    let isStumbling = false;
-    const raycaster = new THREE.Raycaster();
-    container.addEventListener('mousedown', (ev) => {
-      const coords = {
-        x: (ev.offsetX / container.clientWidth) * 2 - 1,
-        y: -(ev.offsetY / container.clientHeight) * 2 + 1
-      };
-
-      raycaster.setFromCamera(coords, camera);
-      const intersections = raycaster.intersectObject(avatar);
-  
-      if (intersections.length > 0) {
-        if (isStumbling) return;
-
-        isStumbling = true;
-        stumbleAction.reset();
-        stumbleAction.play();
-        waveAction.crossFadeTo(stumbleAction, 0.3);
-
-        setTimeout(() => {
-          waveAction.reset();
-          waveAction.play();
-          stumbleAction.crossFadeTo(waveAction, 1);
-          setTimeout(() => isStumbling = false, 1000);
-        }, 4000)
+    if (intersects.length > 0) {
+      if (!isHovering) {
+        console.log("Mouse entered the model");
+        isHovering = true;
+        setShapeKeyInfluence(targetMesh, "target_0", 1);
       }
-    });
+    } else {
+      if (isHovering) {
+        console.log("Mouse left the model");
+        isHovering = false;
+        setShapeKeyInfluence(targetMesh, "target_0", 0);
+      }
+    }
+  }
 
-    window.addEventListener('resize', () => {
-      camera.aspect = container.clientWidth / container.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
-    });
-
-    const clock = new THREE.Clock();
-    function animate() {
-      requestAnimationFrame(animate);
-      mixer.update(clock.getDelta());
-      renderer.render(scene, camera);
+  function setShapeKeyInfluence(mesh, targetName, value) {
+    if (!mesh || !mesh.morphTargetInfluences) {
+      console.warn("Mesh does not have morph targets or is undefined.");
+      return;
     }
 
-    animate();
-    waveAction.play();
+    const morphAttributes = mesh.geometry.morphAttributes;
+    if (!morphAttributes || !morphAttributes.position) {
+      console.warn("Mesh does not have morphAttributes.position.");
+      return;
+    }
+    
+    let targetIndex = -1;
+    for (let i = 0; i < morphAttributes.position.length; i++) {
+        if (morphAttributes.position[i].name === targetName) {
+            targetIndex = i;
+            break;
+        }
+    }
+
+    if (targetIndex !== -1) {
+      mesh.morphTargetInfluences[targetIndex] = value;
+      console.log(`Shape key '${targetName}' set to ${value}`);
+    } else {
+      console.warn(`Shape key '${targetName}' not found.`);
+    }
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+
+  animate();
 }
