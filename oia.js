@@ -71,28 +71,51 @@ function setupScene(gltf) {
 
   // Load avatar
   const avatar = gltf.scene;
-  let targetMesh = null;
+  //avatar.rotation.y = Math.PI; // Remove this line
+  avatar.position.x = 0; // Center the model
+  avatar.position.y = 0; // Center the model
+  scene.add(avatar);
+
+  // Animation Mixer
+  const mixer = new THREE.AnimationMixer(avatar);
+
+  // --- Extract Morph Target Animation ---
+  let target0Action = null;
   avatar.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.morphTargetInfluences && child.geometry.morphAttributes.position) {
-        targetMesh = child;
-        console.log("Found a mesh with morph targets:", targetMesh);
-        // Log all morph target names for debugging
-        console.log("Morph target names:", child.geometry.morphAttributes.position.map(attr => attr.name));
+    if (child.isMesh && child.morphTargetInfluences && child.userData.targetNames) {
+      const targetNames = child.userData.targetNames;
+      const targetIndex = targetNames.indexOf("target_0");
+
+      if (targetIndex !== -1) {
+        const morphTargetData = child.morphTargetDictionary;
+        const targetName = Object.keys(morphTargetData).find(key => morphTargetData[key] === targetIndex);
+        if (targetName) {
+          const track = new THREE.NumberKeyframeTrack(
+            `${child.name}.morphTargetInfluences[${targetIndex}]`,
+            [0, 1], // Time values (start and end)
+            [0, 1] // Influence values (0 to 1)
+          );
+
+          const clip = new THREE.AnimationClip("target_0", 2, [track]); // Duration of 2 seconds
+          target0Action = mixer.clipAction(clip);
+          target0Action.clampWhenFinished = true;
+          target0Action.loop = THREE.LoopOnce;
+        }
       }
     }
   });
-  avatar.rotation.y = Math.PI;
-  avatar.position.x = -25;
-  avatar.position.y -= 10;
-  scene.add(avatar);
+
+  if (!target0Action) {
+    console.warn("Morph target 'target_0' not found or could not be converted to animation.");
+  }
 
   // Raycaster and mouse setup
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
   let isHovering = false;
+  let rotationSpeed = 0.5; // Adjust the rotation speed as needed
+  let currentRotation = 0;
+  let rotationDirection = 1; // 1 for clockwise, -1 for counterclockwise
 
   container.addEventListener('mousemove', (event) => {
     mouse.x = (event.offsetX / container.clientWidth) * 2 - 1;
@@ -100,11 +123,15 @@ function setupScene(gltf) {
     checkIntersection(); // Call checkIntersection on mousemove
   });
   container.addEventListener('mouseleave', () => {
-    // Reset shape key when mouse leaves the container
+    // Reset animation when mouse leaves the container
     if (isHovering) {
       console.log("Mouse left the container");
       isHovering = false;
-      setShapeKeyInfluence(targetMesh, "target_0", 0);
+      if (target0Action) {
+        target0Action.timeScale = -1; // Reverse the animation
+        target0Action.play();
+      }
+      rotationDirection = 1; // Reset rotation direction
     }
   });
 
@@ -116,42 +143,22 @@ function setupScene(gltf) {
       if (!isHovering) {
         console.log("Mouse entered the model");
         isHovering = true;
-        setShapeKeyInfluence(targetMesh, "target_0", 1);
+        if (target0Action) {
+          target0Action.timeScale = 1; // Play the animation forward
+          target0Action.reset().play();
+        }
       }
+       // Change rotation direction on hover
+       rotationDirection = -rotationDirection;
     } else {
       if (isHovering) {
         console.log("Mouse left the model");
         isHovering = false;
-        setShapeKeyInfluence(targetMesh, "target_0", 0);
-      }
-    }
-  }
-
-  function setShapeKeyInfluence(mesh, targetName, value) {
-    if (!mesh || !mesh.morphTargetInfluences) {
-      console.warn("Mesh does not have morph targets or is undefined.");
-      return;
-    }
-
-    const morphAttributes = mesh.geometry.morphAttributes;
-    if (!morphAttributes || !morphAttributes.position) {
-      console.warn("Mesh does not have morphAttributes.position.");
-      return;
-    }
-    
-    let targetIndex = -1;
-    for (let i = 0; i < morphAttributes.position.length; i++) {
-        if (morphAttributes.position[i].name === targetName) {
-            targetIndex = i;
-            break;
+        if (target0Action) {
+          target0Action.timeScale = -1; // Reverse the animation
+          target0Action.play();
         }
-    }
-
-    if (targetIndex !== -1) {
-      mesh.morphTargetInfluences[targetIndex] = value;
-      console.log(`Shape key '${targetName}' set to ${value}`);
-    } else {
-      console.warn(`Shape key '${targetName}' not found.`);
+      }
     }
   }
 
@@ -161,8 +168,18 @@ function setupScene(gltf) {
     renderer.setSize(container.clientWidth, container.clientHeight);
   });
 
+  const clock = new THREE.Clock();
   function animate() {
     requestAnimationFrame(animate);
+    mixer.update(clock.getDelta());
+
+    // Rotate the avatar continuously while hovering
+    if (isHovering) {
+      const delta = clock.getDelta();
+      currentRotation += rotationSpeed * delta * rotationDirection;
+      avatar.rotation.z = currentRotation; // Rotate the avatar, not the child mesh
+    }
+
     renderer.render(scene, camera);
   }
 
