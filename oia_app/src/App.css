@@ -1,0 +1,17 @@
+/* src/App.css */
+.canvas-container {
+  width: 100%;  /* Take full width of its parent (#root) */
+  height: 100%; /* Take full height of its parent (#root) */
+  /* You can add a temporary background color to debug its size: */
+  /* background-color: lightblue; */
+}
+
+/*
+  This rule ensures the actual <canvas> element rendered by react-three-fiber
+  fills the .canvas-container. While R3F often handles this, being explicit is good.
+*/
+.canvas-container canvas {
+  display: block; /* Removes any potential extra space below the canvas */
+  width: 100%;
+  height: 100%;
+}

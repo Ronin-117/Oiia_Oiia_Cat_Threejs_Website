@@ -1,0 +1,32 @@
+/* src/index.css */
+
+/* Reset default browser margins and paddings, and make elements border-box */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100vw;  /* Full viewport width */
+  height: 100vh; /* Full viewport height */
+  overflow: hidden; /* Prevent scrollbars if content slightly exceeds viewport */
+}
+
+/* Optional: You can set a background color for the body if you want */
+body {
+  background-color: #1a1a1a; /* Example dark background */
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif; /* Keep font if you like */
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark; /* Or remove if you manage colors explicitly */
+}
+
+/* Ensure #root specifically takes up the full space and doesn't have conflicting styles */
+#root {
+  /* Remove any max-width, margin: auto, padding that might have been here */
+}
